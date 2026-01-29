@@ -1,3 +1,8 @@
+vX.Y.ZZ (YYYY-MM-DD)
+
+- Update man page generation to now detect whether rst2man or rst2man.py is on
+  the system instead of hardcoding one way or the other.
+
 v0.10.11 (2026-01-05)
 
 - Fix trade result frame 2 hs_qty calculation in PostgreSQL client side code

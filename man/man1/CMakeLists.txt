@@ -3,6 +3,11 @@ execute_process(
     OUTPUT_VARIABLE MANDATE
 )
 
+find_program(RST2MAN NAMES rst2man.py rst2man)
+if (NOT RST2MAN)
+    message(WARNING "rst2man not found, man pages not generated")
+endif (NOT RST2MAN)
+
 set (MANPAGES "")
 foreach (FILE dbt5.1
               dbt5-build.1
@@ -12,7 +17,7 @@ foreach (FILE dbt5.1
         )
     configure_file(${FILE}.rst.in ${CMAKE_BINARY_DIR}/man/man1/${FILE}.rst)
     execute_process(
-            COMMAND rst2man ${CMAKE_BINARY_DIR}/man/man1/${FILE}.rst
+            COMMAND ${RST2MAN} ${CMAKE_BINARY_DIR}/man/man1/${FILE}.rst
             OUTPUT_FILE ${CMAKE_BINARY_DIR}/man/man1/${FILE}
     )
     set (MANPAGES ${MANPAGES} ${CMAKE_BINARY_DIR}/man/man1/${FILE})
