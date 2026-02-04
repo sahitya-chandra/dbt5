@@ -66,12 +66,16 @@ load_table()
 			fi
 		done
 	else
-		eval "${PSQL}" -e <<- EOF
+		if ! eval "${PSQL} -e" <<- EOF
 			BEGIN;
 			TRUNCATE ${1};
 			\COPY ${1} FROM '${FLAT_OUT}/${2}' WITH (DELIMITER '|', FREEZE TRUE, NULL '');
 			COMMIT;
 		EOF
+		then
+			echo "ERROR: loading ${1}"
+			exit 1
+		fi
 	fi
 }
 
@@ -282,6 +286,7 @@ if [ "${MODE}" = "CUSTOM" ]; then
 	CHUNK=$(( ((CUSTOMERS_TOTAL / PARALLELISM) + 999) / 1000 * 1000 ))
 	WORKERS=$(( (CUSTOMERS_TOTAL + CHUNK - 1) / CHUNK ))
 
+	PIDS=""
 	CUSTOMER_START=1
 	for I in $(seq 1 ${WORKERS}); do
 		CUSTOMER_END=$(( CUSTOMER_START + CHUNK ))
@@ -296,9 +301,26 @@ if [ "${MODE}" = "CUSTOM" ]; then
 				-w "${ITD}" \
 				-c "${CHUNK}" \
 				-t "${CUSTOMERS_TOTAL}" > "egenloader-${I}.out" 2>&1 &
+		PIDS="${PIDS} $!:${I}"
 		CUSTOMER_START=${CUSTOMER_END}
 	done
-	wait
+
+	LOAD_ERROR=0
+	for ENTRY in ${PIDS}; do
+		PID="${ENTRY%:*}"
+		IDX="${ENTRY#*:}"
+		if ! wait "${PID}"; then
+			echo "ERROR: EGenLoader worker ${IDX} failed, see egenloader-${IDX}.out"
+			LOAD_ERROR=1
+			for E in ${PIDS}; do
+				kill "${E%:*}" 2> /dev/null
+			done
+			break
+		fi
+	done
+	if [ ${LOAD_ERROR} -ne 0 ]; then
+		exit 1
+	fi
 elif [ "${MODE}" = "FLAT" ]; then
 	if [ "${SKIP_DATA_GENERATION}" -eq 0 ]; then
 		if ! mkdir -p "${FLAT_OUT}"; then
@@ -315,39 +337,56 @@ elif [ "${MODE}" = "FLAT" ]; then
 				-c "${CUSTOMERS_INSTANCE}" \
 				-t "${CUSTOMERS_TOTAL}" > egenloader.out 2>&1 || exit 1
 	fi
-	load_table account_permission AccountPermission.txt &
-	load_table address Address.txt &
-	load_table broker Broker.txt &
-	load_table cash_transaction CashTransaction.txt &
-	load_table charge Charge.txt &
-	load_table commission_rate CommissionRate.txt &
-	load_table company Company.txt &
-	load_table company_competitor CompanyCompetitor.txt &
-	load_table customer Customer.txt &
-	load_table customer_account CustomerAccount.txt &
-	load_table customer_taxrate CustomerTaxrate.txt &
-	load_table daily_market DailyMarket.txt &
-	load_table exchange Exchange.txt &
-	load_table financial Financial.txt &
-	load_table holding_history HoldingHistory.txt &
-	load_table holding_summary HoldingSummary.txt &
-	load_table holding Holding.txt &
-	load_table industry Industry.txt &
-	load_table last_trade LastTrade.txt &
-	load_table news_item NewsItem.txt &
-	load_table news_xref NewsXRef.txt &
-	load_table sector Sector.txt &
-	load_table security Security.txt &
-	load_table settlement Settlement.txt &
-	load_table status_type StatusType.txt &
-	load_table taxrate TaxRate.txt &
-	load_table trade_history TradeHistory.txt &
-	load_table trade Trade.txt &
-	load_table trade_type TradeType.txt &
-	load_table watch_item WatchItem.txt &
-	load_table watch_list WatchList.txt &
-	load_table zip_code ZipCode.txt &
-	wait
+	PIDS=""
+	load_table account_permission AccountPermission.txt & PIDS="${PIDS} $!:account_permission"
+	load_table address Address.txt & PIDS="${PIDS} $!:address"
+	load_table broker Broker.txt & PIDS="${PIDS} $!:broker"
+	load_table cash_transaction CashTransaction.txt & PIDS="${PIDS} $!:cash_transaction"
+	load_table charge Charge.txt & PIDS="${PIDS} $!:charge"
+	load_table commission_rate CommissionRate.txt & PIDS="${PIDS} $!:commission_rate"
+	load_table company Company.txt & PIDS="${PIDS} $!:company"
+	load_table company_competitor CompanyCompetitor.txt & PIDS="${PIDS} $!:company_competitor"
+	load_table customer Customer.txt & PIDS="${PIDS} $!:customer"
+	load_table customer_account CustomerAccount.txt & PIDS="${PIDS} $!:customer_account"
+	load_table customer_taxrate CustomerTaxrate.txt & PIDS="${PIDS} $!:customer_taxrate"
+	load_table daily_market DailyMarket.txt & PIDS="${PIDS} $!:daily_market"
+	load_table exchange Exchange.txt & PIDS="${PIDS} $!:exchange"
+	load_table financial Financial.txt & PIDS="${PIDS} $!:financial"
+	load_table holding_history HoldingHistory.txt & PIDS="${PIDS} $!:holding_history"
+	load_table holding_summary HoldingSummary.txt & PIDS="${PIDS} $!:holding_summary"
+	load_table holding Holding.txt & PIDS="${PIDS} $!:holding"
+	load_table industry Industry.txt & PIDS="${PIDS} $!:industry"
+	load_table last_trade LastTrade.txt & PIDS="${PIDS} $!:last_trade"
+	load_table news_item NewsItem.txt & PIDS="${PIDS} $!:news_item"
+	load_table news_xref NewsXRef.txt & PIDS="${PIDS} $!:news_xref"
+	load_table sector Sector.txt & PIDS="${PIDS} $!:sector"
+	load_table security Security.txt & PIDS="${PIDS} $!:security"
+	load_table settlement Settlement.txt & PIDS="${PIDS} $!:settlement"
+	load_table status_type StatusType.txt & PIDS="${PIDS} $!:status_type"
+	load_table taxrate TaxRate.txt & PIDS="${PIDS} $!:taxrate"
+	load_table trade_history TradeHistory.txt & PIDS="${PIDS} $!:trade_history"
+	load_table trade Trade.txt & PIDS="${PIDS} $!:trade"
+	load_table trade_type TradeType.txt & PIDS="${PIDS} $!:trade_type"
+	load_table watch_item WatchItem.txt & PIDS="${PIDS} $!:watch_item"
+	load_table watch_list WatchList.txt & PIDS="${PIDS} $!:watch_list"
+	load_table zip_code ZipCode.txt & PIDS="${PIDS} $!:zip_code"
+
+	LOAD_ERROR=0
+	for ENTRY in ${PIDS}; do
+		PID="${ENTRY%:*}"
+		TABLE="${ENTRY#*:}"
+		if ! wait "${PID}"; then
+			echo "ERROR: loading table ${TABLE} failed"
+			LOAD_ERROR=1
+			for E in ${PIDS}; do
+				kill "${E%:*}" 2> /dev/null
+			done
+			break
+		fi
+	done
+	if [ ${LOAD_ERROR} -ne 0 ]; then
+		exit 1
+	fi
 else
 	echo "ERROR: unknown load type: ${MODE}"
 	exit 1
